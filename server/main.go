@@ -48,20 +48,26 @@ func (s *server) LoadData(data []byte) {
 func (s *server) GetAllFriends(request *proto.UserQuery, stream proto.Server_GetAllFriendsServer) error {
 	id := request.GetId()
 	c := make(chan *proto.User)
+	n := 0
 	for _, user := range s.listUser {
 		if user.Id == id {
+			n = len(user.Friends)
 			for _, friendId := range user.Friends {
 				go s.FindMyFriends(friendId, c)
 			}
 			break
 		}
 	}
+	j := 0
 	for v := range c {
 		if err := stream.Send(v); err != nil {
 			return err
 		}
+		if j == n-1 {
+			close(c)
+		}
+		j++
 	}
-	fmt.Println("Pass this")
 	return nil
 }
 
