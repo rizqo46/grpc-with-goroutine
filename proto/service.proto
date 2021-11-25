@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = ".;proto";
+
+message User {
+    string id = 1;
+    repeated string roles = 2;
+    Avatar avatar = 3;
+    Identity identity = 4;
+    repeated string friends = 5;
+}
+
+message Avatar {
+    string thumbnail = 1;
+    string original = 2;
+}
+
+message Identity {
+    string name = 1;
+    string email = 2;
+    string created_at = 3;
+}
+
+message UserQuery {
+    string id = 1;
+}
+
+message SendEmails {
+    repeated string emails= 1;
+}
+
+message DateQuery {
+    string date_start = 1;
+    string date_end = 2;
+}
+
+service Server {
+    rpc GetAllFriends(UserQuery) returns (stream User);
+    rpc GetUsersByDate(DateQuery) returns (stream User);
+    rpc SendEmailToAllFriends(UserQuery) returns (SendEmails);
+}
