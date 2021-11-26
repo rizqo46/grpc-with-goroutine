@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"grpc-with-goroutine/proto"
 	"io/ioutil"
 	"net/http"
+	"sync"
 
 	"log"
 
@@ -102,6 +104,73 @@ func (s *server) FindMyFriends(userId string, c chan *proto.User, dataUsers list
 			return
 		}
 	}
+}
+
+func (s *server) GetUsersByDate(request *proto.DateQuery, stream proto.Server_GetUsersByDateServer) error {
+	dataUsers := s.LoadData()
+	timeStart, err := time.Parse(time.RFC3339, request.GetDateStart())
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	timeEnd, err := time.Parse(time.RFC3339, request.GetDateEnd())
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	var createdAt time.Time
+	go func() {
+		for _, user := range dataUsers.Users {
+			createdAt, err = time.Parse(time.RFC3339, user.Identity.CreatedAt)
+			if err != nil {
+				fmt.Println(err)
+			}
+			if createdAt.After(timeStart) && createdAt.After(timeEnd) {
+				stream.Send(user)
+			}
+		}
+		wg.Done()
+	}()
+	wg.Wait()
+
+	return nil
+}
+
+func (s *server) SendEmailToAllFriends(ctx context.Context, request *proto.UserQuery) (*proto.SendEmails, error) {
+	var results proto.SendEmails
+	sendEmail := func(user *proto.User, results *proto.SendEmails, wg *sync.WaitGroup) {
+		time.Sleep(time.Duration(rand.Intn(1000)) * time.Millisecond)
+		results.Emails = append(results.Emails, user.Identity.Email)
+		wg.Done()
+	}
+	id := request.GetId()
+	dataUsers := s.LoadData()
+	var wg sync.WaitGroup
+	var friend *proto.User
+	for _, user := range dataUsers.Users {
+		if user.Id == id {
+			wg.Add(len(user.Friends))
+			for _, friendId := range user.Friends {
+				friend = findUserById(friendId, dataUsers.Users)
+				go sendEmail(friend, &results, &wg)
+			}
+			wg.Wait()
+			break
+
+		}
+	}
+	return &results, nil
+}
+
+func findUserById(id string, data []*proto.User) *proto.User {
+	for _, user := range data {
+		if user.Id == id {
+			return user
+		}
+	}
+	return nil
 }
 
 var dummyData = []byte(`{
