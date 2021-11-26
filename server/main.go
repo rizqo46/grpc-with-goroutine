@@ -117,19 +117,23 @@ func (s *server) GetUsersByDate(request *proto.DateQuery, stream proto.Server_Ge
 	if err != nil {
 		fmt.Println(err)
 	}
+	// log.Print("Time start is :", timeStart)
+
+	// log.Print("Time end is :", timeEnd)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	var createdAt time.Time
 	go func() {
+		var createdAt time.Time
 		for _, user := range dataUsers.Users {
 			createdAt, err = time.Parse(time.RFC3339, user.Identity.CreatedAt)
 			if err != nil {
 				fmt.Println(err)
 			}
-			if createdAt.After(timeStart) && createdAt.After(timeEnd) {
+			if createdAt.After(timeStart) && createdAt.Before(timeEnd) {
 				stream.Send(user)
 			}
+
 		}
 		wg.Done()
 	}()
