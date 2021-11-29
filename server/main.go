@@ -94,7 +94,7 @@ func (s *server) GetAllFriends(request *proto.UserQuery, stream proto.Server_Get
 			break
 		}
 		if i == len(dataUsers.Users)-1 {
-			return errors.New("No user with those ID")
+			return errors.New("no user with those id")
 		}
 	}
 	j := 0
@@ -201,7 +201,7 @@ func (s *server) SendEmailToAllFriends(ctx context.Context, request *proto.UserQ
 			return &results, nil
 		}
 		if i == len(dataUsers.Users)-1 {
-			return &results, errors.New("No user with those ID")
+			return &results, errors.New("no user with those id")
 		}
 	}
 	return &results, nil
