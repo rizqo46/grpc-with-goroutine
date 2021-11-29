@@ -21,6 +21,8 @@ type ServerClient interface {
 	GetAllFriends(ctx context.Context, in *UserQuery, opts ...grpc.CallOption) (Server_GetAllFriendsClient, error)
 	GetUsersByDate(ctx context.Context, in *DateQuery, opts ...grpc.CallOption) (Server_GetUsersByDateClient, error)
 	SendEmailToAllFriends(ctx context.Context, in *UserQuery, opts ...grpc.CallOption) (*SendEmails, error)
+	GetEmailLogsBySenderId(ctx context.Context, in *UserQuery, opts ...grpc.CallOption) (Server_GetEmailLogsBySenderIdClient, error)
+	GetEmailLogsByDate(ctx context.Context, in *DateQuery, opts ...grpc.CallOption) (Server_GetEmailLogsByDateClient, error)
 }
 
 type serverClient struct {
@@ -104,6 +106,70 @@ func (c *serverClient) SendEmailToAllFriends(ctx context.Context, in *UserQuery,
 	return out, nil
 }
 
+func (c *serverClient) GetEmailLogsBySenderId(ctx context.Context, in *UserQuery, opts ...grpc.CallOption) (Server_GetEmailLogsBySenderIdClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Server_ServiceDesc.Streams[2], "/proto.Server/GetEmailLogsBySenderId", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &serverGetEmailLogsBySenderIdClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Server_GetEmailLogsBySenderIdClient interface {
+	Recv() (*EmailLog, error)
+	grpc.ClientStream
+}
+
+type serverGetEmailLogsBySenderIdClient struct {
+	grpc.ClientStream
+}
+
+func (x *serverGetEmailLogsBySenderIdClient) Recv() (*EmailLog, error) {
+	m := new(EmailLog)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *serverClient) GetEmailLogsByDate(ctx context.Context, in *DateQuery, opts ...grpc.CallOption) (Server_GetEmailLogsByDateClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Server_ServiceDesc.Streams[3], "/proto.Server/GetEmailLogsByDate", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &serverGetEmailLogsByDateClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Server_GetEmailLogsByDateClient interface {
+	Recv() (*EmailLog, error)
+	grpc.ClientStream
+}
+
+type serverGetEmailLogsByDateClient struct {
+	grpc.ClientStream
+}
+
+func (x *serverGetEmailLogsByDateClient) Recv() (*EmailLog, error) {
+	m := new(EmailLog)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // ServerServer is the server API for Server service.
 // All implementations must embed UnimplementedServerServer
 // for forward compatibility
@@ -111,6 +177,8 @@ type ServerServer interface {
 	GetAllFriends(*UserQuery, Server_GetAllFriendsServer) error
 	GetUsersByDate(*DateQuery, Server_GetUsersByDateServer) error
 	SendEmailToAllFriends(context.Context, *UserQuery) (*SendEmails, error)
+	GetEmailLogsBySenderId(*UserQuery, Server_GetEmailLogsBySenderIdServer) error
+	GetEmailLogsByDate(*DateQuery, Server_GetEmailLogsByDateServer) error
 	mustEmbedUnimplementedServerServer()
 }
 
@@ -126,6 +194,12 @@ func (UnimplementedServerServer) GetUsersByDate(*DateQuery, Server_GetUsersByDat
 }
 func (UnimplementedServerServer) SendEmailToAllFriends(context.Context, *UserQuery) (*SendEmails, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendEmailToAllFriends not implemented")
+}
+func (UnimplementedServerServer) GetEmailLogsBySenderId(*UserQuery, Server_GetEmailLogsBySenderIdServer) error {
+	return status.Errorf(codes.Unimplemented, "method GetEmailLogsBySenderId not implemented")
+}
+func (UnimplementedServerServer) GetEmailLogsByDate(*DateQuery, Server_GetEmailLogsByDateServer) error {
+	return status.Errorf(codes.Unimplemented, "method GetEmailLogsByDate not implemented")
 }
 func (UnimplementedServerServer) mustEmbedUnimplementedServerServer() {}
 
@@ -200,6 +274,48 @@ func _Server_SendEmailToAllFriends_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Server_GetEmailLogsBySenderId_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(UserQuery)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ServerServer).GetEmailLogsBySenderId(m, &serverGetEmailLogsBySenderIdServer{stream})
+}
+
+type Server_GetEmailLogsBySenderIdServer interface {
+	Send(*EmailLog) error
+	grpc.ServerStream
+}
+
+type serverGetEmailLogsBySenderIdServer struct {
+	grpc.ServerStream
+}
+
+func (x *serverGetEmailLogsBySenderIdServer) Send(m *EmailLog) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _Server_GetEmailLogsByDate_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(DateQuery)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ServerServer).GetEmailLogsByDate(m, &serverGetEmailLogsByDateServer{stream})
+}
+
+type Server_GetEmailLogsByDateServer interface {
+	Send(*EmailLog) error
+	grpc.ServerStream
+}
+
+type serverGetEmailLogsByDateServer struct {
+	grpc.ServerStream
+}
+
+func (x *serverGetEmailLogsByDateServer) Send(m *EmailLog) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // Server_ServiceDesc is the grpc.ServiceDesc for Server service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -221,6 +337,16 @@ var Server_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "GetUsersByDate",
 			Handler:       _Server_GetUsersByDate_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetEmailLogsBySenderId",
+			Handler:       _Server_GetEmailLogsBySenderId_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetEmailLogsByDate",
+			Handler:       _Server_GetEmailLogsByDate_Handler,
 			ServerStreams: true,
 		},
 	},

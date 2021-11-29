@@ -36,8 +36,18 @@ message DateQuery {
     string date_end = 2;
 }
 
+message EmailLog {
+    string from_user_id = 1;
+    string from = 2;
+    string to = 3;
+    bool is_success = 4;
+    string date = 5;
+}
+
 service Server {
     rpc GetAllFriends(UserQuery) returns (stream User);
     rpc GetUsersByDate(DateQuery) returns (stream User);
     rpc SendEmailToAllFriends(UserQuery) returns (SendEmails);
+    rpc GetEmailLogsBySenderId(UserQuery) returns (stream EmailLog);
+    rpc GetEmailLogsByDate(DateQuery) returns (stream EmailLog);
 }

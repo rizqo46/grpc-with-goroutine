@@ -22,6 +22,8 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 
 	"github.com/joho/godotenv"
 )
@@ -36,11 +38,20 @@ type Users struct {
 
 type listUsers *Users
 
+var db *gorm.DB
+
 func main() {
+	db = initDbConnection()
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
+	f, err := os.OpenFile(".log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	// log.SetOutput(f)
 	time.Sleep(time.Duration(rand.Intn(30)) * time.Millisecond)
 	listener, err := net.Listen("tcp", ":5000")
 	if err != nil {
@@ -57,6 +68,16 @@ func main() {
 	}
 	fmt.Println("Server started")
 
+}
+
+func initDbConnection() *gorm.DB {
+	dsn := "host=localhost user=root password=password port=5432"
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		fmt.Println(err.Error())
+		panic("failed to connect database")
+	}
+	return db
 }
 
 func (s *server) LoadData() listUsers {
@@ -161,21 +182,6 @@ func (s *server) SendEmailToAllFriends(ctx context.Context, request *proto.UserQ
 	id := request.GetId()
 	dataUsers := s.LoadData()
 	var wg sync.WaitGroup
-
-	// send to all users
-	if id == "0" {
-		n := len(dataUsers.Users)/5 + 1
-		wg.Add(n)
-		for i := 0; i < n; i++ {
-			go SendBulkEmail(dataUsers.Users[0],
-				dataUsers.Users[i*5:int(math.Min(float64((i+1)*5), float64(len(dataUsers.Users))))],
-				&results,
-				&wg)
-		}
-		wg.Wait()
-		return &results, nil
-	}
-
 	var friend *proto.User
 	for i, user := range dataUsers.Users {
 		if user.Id == id {
@@ -207,6 +213,17 @@ func (s *server) SendEmailToAllFriends(ctx context.Context, request *proto.UserQ
 	return &results, nil
 }
 
+func (s *server) GetEmailLogsBySenderId(request *proto.UserQuery, stream proto.Server_GetEmailLogsBySenderIdServer) error {
+	var Emails []*proto.EmailLog
+	db.Where("from_user_id = ?", request.GetId()).Find(&Emails)
+	for _, email := range Emails {
+		if err := stream.Send(email); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func findUserById(id string, data []*proto.User) *proto.User {
 	for _, user := range data {
 		if user.Id == id {
@@ -227,33 +244,41 @@ func SendEmail(userFrom *proto.User, userTo *proto.User, wg *sync.WaitGroup) {
 		"\r\n"+
 		"Hello %s, how are you?\r\n", userTo.Identity.Email, userFrom.Identity.Name, userTo.Identity.Name))
 	err := smtp.SendMail("smtp.mailtrap.io:2525", auth, "elon@musk.com", to, msg)
+	email := proto.EmailLog{FromUserId: userFrom.Id,
+		From:      userFrom.Identity.Email,
+		To:        userTo.Identity.Email,
+		IsSuccess: true,
+		Date:      time.Now().String(),
+	}
 	if err != nil {
+		email.IsSuccess = false
 		log.Fatal(err)
 	} else {
 		log.Println("Success send email to", userTo.Identity.Email)
 	}
+	db.Create(&email)
 	wg.Done()
 
 }
 
-func SendBulkEmail(userFrom *proto.User, usersTo []*proto.User, results *proto.SendEmails, wg *sync.WaitGroup) {
-	for _, userTo := range usersTo {
-		auth := smtp.PlainAuth("", os.Getenv("MAILTRAP_USER"), os.Getenv("MAILTRAP_PASS"), "smtp.mailtrap.io")
+// func SendBulkEmail(userFrom *proto.User, usersTo []*proto.User, results *proto.SendEmails, wg *sync.WaitGroup) {
+// 	for _, userTo := range usersTo {
+// 		auth := smtp.PlainAuth("", os.Getenv("MAILTRAP_USER"), os.Getenv("MAILTRAP_PASS"), "smtp.mailtrap.io")
 
-		// Here we do it all: connect to our server, set up a message and send it
-		to := []string{userTo.Identity.Email}
-		msg := []byte(fmt.Sprintf("To: %s \r\n"+
-			"Subject: %s send you an email\r\n"+
-			"\r\n"+
-			"Hello %s, how are you?\r\n", userTo.Identity.Email, userFrom.Identity.Name, userTo.Identity.Name))
-		err := smtp.SendMail("smtp.mailtrap.io:2525", auth, "elon@musk.com", to, msg)
-		if err != nil {
-			log.Fatal(err)
-		}
-		results.Emails = append(results.Emails, userTo.Identity.Email)
-	}
-	wg.Done()
-}
+// 		// Here we do it all: connect to our server, set up a message and send it
+// 		to := []string{userTo.Identity.Email}
+// 		msg := []byte(fmt.Sprintf("To: %s \r\n"+
+// 			"Subject: %s send you an email\r\n"+
+// 			"\r\n"+
+// 			"Hello %s, how are you?\r\n", userTo.Identity.Email, userFrom.Identity.Name, userTo.Identity.Name))
+// 		err := smtp.SendMail("smtp.mailtrap.io:2525", auth, "elon@musk.com", to, msg)
+// 		if err != nil {
+// 			log.Fatal(err)
+// 		}
+// 		results.Emails = append(results.Emails, userTo.Identity.Email)
+// 	}
+// 	wg.Done()
+// }
 
 var dummyData = []byte(`{
 	"users": [{
