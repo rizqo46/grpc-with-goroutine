@@ -157,21 +157,44 @@ func (s *server) SendEmailToAllFriends(ctx context.Context, request *proto.UserQ
 	id := request.GetId()
 	dataUsers := s.LoadData()
 	var wg sync.WaitGroup
+
+	// send to all users
+	if id == "0" {
+		n := len(dataUsers.Users)/5 + 1
+		wg.Add(n)
+		for i := 0; i < n; i++ {
+			go SendBulkEmail(dataUsers.Users[0],
+				dataUsers.Users[i*5:int(math.Min(float64((i+1)*5), float64(len(dataUsers.Users))))],
+				&results,
+				&wg)
+		}
+		wg.Wait()
+		return &results, nil
+	}
+
 	var friend *proto.User
 	for _, user := range dataUsers.Users {
 		if user.Id == id {
-			wg.Add(int(math.Min(5, float64(len(user.Friends)))))
-			for i, friendId := range user.Friends {
+
+			for _, friendId := range user.Friends {
 				friend = findUserById(friendId, dataUsers.Users)
-				go SendEmail(user, friend, &results, &wg)
-				if (i+1)%5 == 0 {
-					wg.Wait()
-					time.Sleep(10 * time.Second)
-					wg.Add(int(math.Min(5, float64(len(user.Friends)-i-1))))
-				}
+				results.Emails = append(results.Emails, friend.Identity.Email)
 			}
-			wg.Wait()
-			break
+			wg.Add(int(math.Min(5, float64(len(user.Friends)))))
+			go func() {
+				for i, friendId := range user.Friends {
+					friend = findUserById(friendId, dataUsers.Users)
+					go SendEmail(user, friend, &wg)
+					if (i+1)%5 == 0 {
+						wg.Wait()
+						time.Sleep(10 * time.Second)
+						wg.Add(int(math.Min(5, float64(len(user.Friends)-i-1))))
+					}
+				}
+				wg.Wait()
+				fmt.Println("All email has been sended")
+			}()
+			return &results, nil
 		}
 	}
 	return &results, nil
@@ -186,11 +209,7 @@ func findUserById(id string, data []*proto.User) *proto.User {
 	return nil
 }
 
-// func SendEmailBulk(userFrom *proto.User, userTo []*proto.User, results *proto.SendEmails, wg *sync.WaitGroup) {
-
-// }
-
-func SendEmail(userFrom *proto.User, userTo *proto.User, results *proto.SendEmails, wg *sync.WaitGroup) {
+func SendEmail(userFrom *proto.User, userTo *proto.User, wg *sync.WaitGroup) {
 	// Choose auth method and set it up
 	auth := smtp.PlainAuth("", os.Getenv("MAILTRAP_USER"), os.Getenv("MAILTRAP_PASS"), "smtp.mailtrap.io")
 
@@ -203,10 +222,30 @@ func SendEmail(userFrom *proto.User, userTo *proto.User, results *proto.SendEmai
 	err := smtp.SendMail("smtp.mailtrap.io:2525", auth, "elon@musk.com", to, msg)
 	if err != nil {
 		log.Fatal(err)
+	} else {
+		log.Println("Success send email to", userTo.Identity.Email)
 	}
-	results.Emails = append(results.Emails, userTo.Identity.Email)
 	wg.Done()
 
+}
+
+func SendBulkEmail(userFrom *proto.User, usersTo []*proto.User, results *proto.SendEmails, wg *sync.WaitGroup) {
+	for _, userTo := range usersTo {
+		auth := smtp.PlainAuth("", os.Getenv("MAILTRAP_USER"), os.Getenv("MAILTRAP_PASS"), "smtp.mailtrap.io")
+
+		// Here we do it all: connect to our server, set up a message and send it
+		to := []string{userTo.Identity.Email}
+		msg := []byte(fmt.Sprintf("To: %s \r\n"+
+			"Subject: %s send you an email\r\n"+
+			"\r\n"+
+			"Hello %s, how are you?\r\n", userTo.Identity.Email, userFrom.Identity.Name, userTo.Identity.Name))
+		err := smtp.SendMail("smtp.mailtrap.io:2525", auth, "elon@musk.com", to, msg)
+		if err != nil {
+			log.Fatal(err)
+		}
+		results.Emails = append(results.Emails, userTo.Identity.Email)
+	}
+	wg.Done()
 }
 
 var dummyData = []byte(`{
