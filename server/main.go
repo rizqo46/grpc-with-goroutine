@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"grpc-with-goroutine/proto"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"sync"
 
@@ -15,8 +16,13 @@ import (
 	"net"
 	"time"
 
+	"net/smtp"
+	"os"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+
+	"github.com/joho/godotenv"
 )
 
 type server struct {
@@ -30,6 +36,10 @@ type Users struct {
 type listUsers *Users
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
 	time.Sleep(time.Duration(rand.Intn(30)) * time.Millisecond)
 	listener, err := net.Listen("tcp", ":5000")
 	if err != nil {
@@ -144,25 +154,24 @@ func (s *server) GetUsersByDate(request *proto.DateQuery, stream proto.Server_Ge
 
 func (s *server) SendEmailToAllFriends(ctx context.Context, request *proto.UserQuery) (*proto.SendEmails, error) {
 	var results proto.SendEmails
-	sendEmail := func(user *proto.User, results *proto.SendEmails, wg *sync.WaitGroup) {
-		time.Sleep(time.Duration(rand.Intn(1000)) * time.Millisecond)
-		results.Emails = append(results.Emails, user.Identity.Email)
-		wg.Done()
-	}
 	id := request.GetId()
 	dataUsers := s.LoadData()
 	var wg sync.WaitGroup
 	var friend *proto.User
 	for _, user := range dataUsers.Users {
 		if user.Id == id {
-			wg.Add(len(user.Friends))
-			for _, friendId := range user.Friends {
+			wg.Add(int(math.Min(5, float64(len(user.Friends)))))
+			for i, friendId := range user.Friends {
 				friend = findUserById(friendId, dataUsers.Users)
-				go sendEmail(friend, &results, &wg)
+				go SendEmail(user, friend, &results, &wg)
+				if (i+1)%5 == 0 {
+					wg.Wait()
+					time.Sleep(10 * time.Second)
+					wg.Add(int(math.Min(5, float64(len(user.Friends)-i-1))))
+				}
 			}
 			wg.Wait()
 			break
-
 		}
 	}
 	return &results, nil
@@ -175,6 +184,29 @@ func findUserById(id string, data []*proto.User) *proto.User {
 		}
 	}
 	return nil
+}
+
+// func SendEmailBulk(userFrom *proto.User, userTo []*proto.User, results *proto.SendEmails, wg *sync.WaitGroup) {
+
+// }
+
+func SendEmail(userFrom *proto.User, userTo *proto.User, results *proto.SendEmails, wg *sync.WaitGroup) {
+	// Choose auth method and set it up
+	auth := smtp.PlainAuth("", os.Getenv("MAILTRAP_USER"), os.Getenv("MAILTRAP_PASS"), "smtp.mailtrap.io")
+
+	// Here we do it all: connect to our server, set up a message and send it
+	to := []string{userTo.Identity.Email}
+	msg := []byte(fmt.Sprintf("To: %s \r\n"+
+		"Subject: %s send you an email\r\n"+
+		"\r\n"+
+		"Hello %s, how are you?\r\n", userTo.Identity.Email, userFrom.Identity.Name, userTo.Identity.Name))
+	err := smtp.SendMail("smtp.mailtrap.io:2525", auth, "elon@musk.com", to, msg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	results.Emails = append(results.Emails, userTo.Identity.Email)
+	wg.Done()
+
 }
 
 var dummyData = []byte(`{
