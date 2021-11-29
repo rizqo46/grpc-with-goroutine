@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"grpc-with-goroutine/proto"
 	"io/ioutil"
@@ -84,13 +85,16 @@ func (s *server) GetAllFriends(request *proto.UserQuery, stream proto.Server_Get
 	dataUsers := s.LoadData()
 	c := make(chan *proto.User)
 	n := 0
-	for _, user := range dataUsers.Users {
+	for i, user := range dataUsers.Users {
 		if user.Id == id {
 			n = len(user.Friends)
 			for _, friendId := range user.Friends {
 				go s.FindMyFriends(friendId, c, dataUsers)
 			}
 			break
+		}
+		if i == len(dataUsers.Users)-1 {
+			return errors.New("No user with those ID")
 		}
 	}
 	j := 0
@@ -173,7 +177,7 @@ func (s *server) SendEmailToAllFriends(ctx context.Context, request *proto.UserQ
 	}
 
 	var friend *proto.User
-	for _, user := range dataUsers.Users {
+	for i, user := range dataUsers.Users {
 		if user.Id == id {
 
 			for _, friendId := range user.Friends {
@@ -195,6 +199,9 @@ func (s *server) SendEmailToAllFriends(ctx context.Context, request *proto.UserQ
 				fmt.Println("All email has been sended")
 			}()
 			return &results, nil
+		}
+		if i == len(dataUsers.Users)-1 {
+			return &results, errors.New("No user with those ID")
 		}
 	}
 	return &results, nil
